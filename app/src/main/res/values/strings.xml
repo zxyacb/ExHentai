@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">ExHentai</string>
+    <string name="action_settings">设置</string>
+    <string name="refresh">刷新</string>
+    <string name="fav">收藏夹 - 全彩</string>
+    <string name="ipb_member_id">ipb_member_id</string>
+    <string name="ipb_pass_hash">ipb_pass_hash</string>
+    <string name="ipb_session_id">ipb_session_id</string>
+    <string name="set_cookie">手动设置Cookie</string>
+    <string name="download">下载</string>
+</resources>
