@@ -19,9 +19,4 @@
         android:layout_width="match_parent"
         android:layout_height="3dp" />
 
-    <WebView
-        android:id="@+id/backWeb"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone" />
 </android.support.constraint.ConstraintLayout>

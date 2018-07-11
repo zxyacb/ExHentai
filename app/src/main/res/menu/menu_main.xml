@@ -9,8 +9,14 @@
         android:onClick="onFavClick"
         android:title="@string/fav" />
     <item
+        android:onClick="onLoadClipboardClick"
+        android:title="@string/load_clipboard" />
+    <item
         android:id="@+id/action_settings"
         android:orderInCategory="100"
         android:title="@string/action_settings"
         app:showAsAction="never" />
+    <item
+        android:onClick="onResetClick"
+        android:title="@string/reset_download_manager" />
 </menu>

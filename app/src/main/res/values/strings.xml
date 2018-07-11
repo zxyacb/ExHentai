@@ -7,5 +7,7 @@
     <string name="ipb_pass_hash">ipb_pass_hash</string>
     <string name="ipb_session_id">ipb_session_id</string>
     <string name="set_cookie">手动设置Cookie</string>
+    <string name="load_clipboard">加载剪贴板</string>
+    <string name="reset_download_manager">重置下载管理器</string>
     <string name="download">下载</string>
 </resources>
