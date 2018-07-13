@@ -9,10 +9,6 @@ import android.os.SystemClock;
 import android.util.Log;
 import android.widget.Toast;
 
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -21,10 +17,16 @@ import org.jsoup.nodes.Element;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 import static android.content.Context.NOTIFICATION_SERVICE;
 
@@ -42,16 +44,18 @@ public class HentaiDownloadManager {
     private final Notification.Builder builder;
     private final Thread downloadThread;
     private boolean threadRunning = true;
+    private String curPageUrl;
+
 
     HentaiDownloadManager(Activity act, String dir, HashMap<String, String> cookie) {
         activity = act;
         baseDirectory = dir;
-        connection = Jsoup.connect("http://example.com").cookies(cookie).userAgent(userAgent);
-        client = new OkHttpClient.Builder().build();
+        connection = Jsoup.connect("http://example.com").cookies(cookie).userAgent(userAgent).timeout(5000);
+        client = new OkHttpClient.Builder().writeTimeout(15, TimeUnit.SECONDS).build();
         notificationManager = (NotificationManager) MainActivity.globalActivity.getSystemService(NOTIFICATION_SERVICE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            notificationManager.createNotificationChannel(new NotificationChannel("hentai", "exhentai", NotificationManager.IMPORTANCE_DEFAULT));
-            builder = new Notification.Builder(MainActivity.globalActivity, "hentai");
+            notificationManager.createNotificationChannel(new NotificationChannel("exhentai", "exhentai", NotificationManager.IMPORTANCE_DEFAULT));
+            builder = new Notification.Builder(MainActivity.globalActivity, "exhentai");
         } else {
             builder = new Notification.Builder(MainActivity.globalActivity);
         }
@@ -67,9 +71,9 @@ public class HentaiDownloadManager {
 
     void add(String url) {
         if (offer(url))
-            Toast.makeText(MainActivity.globalActivity, "添加成功", Toast.LENGTH_LONG).show();
+            Toast.makeText(MainActivity.globalActivity, R.string.add_succeed, Toast.LENGTH_SHORT).show();
         else
-            Toast.makeText(MainActivity.globalActivity, "添加失败", Toast.LENGTH_LONG).show();
+            Toast.makeText(MainActivity.globalActivity, R.string.add_fail, Toast.LENGTH_SHORT).show();
     }
 
     private boolean offer(String url) {
@@ -84,22 +88,22 @@ public class HentaiDownloadManager {
         public void run() {
             try {
                 while (threadRunning) {
-                    String url = downloadQueue.take();
-                    if (url == null || url.equals("")) {
+                    curPageUrl = downloadQueue.take();
+                    if (curPageUrl.equals("")) {
                         continue;
                     }
-                    if (galleryRegex.matcher(url).find()) {
+                    if (galleryRegex.matcher(curPageUrl).find()) {
                         while (true) {
                             try {
-                                Document document = connection.url(url).get();
-                                url = document.selectFirst(".gdtl a").attr("href");
+                                Document document = connection.url(curPageUrl).get();
+                                curPageUrl = document.selectFirst(".gdtl a").attr("href");
                                 break;
                             } catch (Exception ignored) {
                             }
                         }
                     }
 
-                    Matcher matcher = Pattern.compile("/(\\d+)-\\d+").matcher(url);
+                    Matcher matcher = Pattern.compile("/(\\d+)-\\d+").matcher(curPageUrl);
                     final String galleryId;
                     if (matcher.find()) {
                         galleryId = matcher.group(1);
@@ -108,16 +112,13 @@ public class HentaiDownloadManager {
                     }
 
                     File folder = new File(baseDirectory + "/" + galleryId);
-                    if (!folder.exists()) {
-                        folder.mkdir();
-                    }
+                    if (!folder.exists()) folder.mkdir();
 
                     builder.setContentTitle(galleryId + " 下载中").setContentText("获取中...")
                             .setProgress(100, 0, false);
                     notificationManager.notify(Integer.parseInt(galleryId), builder.build());
                     Log.i("DownloadThread", "Download Gallery" + galleryId);
 
-                    String curPageUrl = url;
                     String pageId = null, finalPageId = null;
                     while (threadRunning) {
                         try {
@@ -147,17 +148,31 @@ public class HentaiDownloadManager {
                             }
                             File image = new File(baseDirectory + "/" + galleryId + "/" + pageId + ".jpg");
                             if (!image.exists()) {
+                                Log.i("DownloadThread", "download start: " + pageId);
                                 String imgSrc = img.attr("src");
                                 Request request = new Request.Builder().url(imgSrc).build();
-                                Response response = client.newCall(request).execute();
-                                if (!response.isSuccessful())
-                                    throw new IOException("Unexpected code " + response);
-                                byte[] buffer = response.body().bytes();
-                                FileOutputStream output = new FileOutputStream(baseDirectory + "/" + galleryId + "/" + pageId + ".jpg");
-                                output.write(buffer);
-                                output.close();
-                                response.close();
-                                Log.i("DownloadThread", "download succedd: " + pageId);
+                                try (Response response = client.newCall(request).execute();) {
+                                    if (!response.isSuccessful())
+                                        throw new IOException("Unexpected code " + response);
+                                    byte[] buffer = response.body().bytes();
+                                    FileOutputStream output = new FileOutputStream(baseDirectory + "/" + galleryId + "/" + pageId + ".jpg");
+                                    output.write(buffer);
+                                    output.close();
+                                    Log.i("DownloadThread", "download succeed: " + pageId);
+                                } catch (IOException e) {
+                                    Log.i("DownloadThread", "download error: " + pageId);
+                                    String onerror = img.attr("onerror");
+                                    if (onerror != null && !onerror.equals("")) {
+                                        Matcher em = Pattern.compile("nl\\('(\\d+-\\d+)'\\)").matcher(onerror);
+                                        if (em.find()) {
+                                            String nl = em.group(1);
+                                            curPageUrl += "?nl=" + nl;
+                                        }
+                                    } else {
+                                        curPageUrl = curPageUrl.replaceFirst("\\?nl=\\d+-\\d+", "");
+                                    }
+                                    throw e;
+                                }
                             } else {
                                 Log.i("DownloadThread", "skipped exist file: " + pageId);
                             }
@@ -174,29 +189,42 @@ public class HentaiDownloadManager {
                                     builder.setContentTitle(galleryId + " 下载中").setContentText(pageId + " / " + finalPageId)
                                             .setProgress(Integer.parseInt(finalPageId), Integer.parseInt(pageId), false);
                                     notificationManager.notify(Integer.parseInt(galleryId), builder.build());
-                                } catch (NumberFormatException e) {
-                                    e.printStackTrace();
+                                } catch (NumberFormatException ignored) {
                                 }
                             }
 
                             //下一页
-                            Log.i("DownloadThread", "下一页：" + curPageUrl);
                             curPageUrl = next.attr("href");
+                            Log.i("DownloadThread", "下一页：" + curPageUrl);
                             Thread.sleep(500);
-                        } catch (NullPointerException | IOException e) {
-                            e.printStackTrace();
+                        } catch (NullPointerException | IOException ignored) {
                         }
                     }
                 }
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
+            notificationManager.cancelAll();
         }
     }
 
     void reset() {
-        notificationManager.cancelAll();
         threadRunning = false;
         downloadQueue.offer("");
+    }
+
+    String[] saveState() {
+        ArrayList<String> list = new ArrayList<>();
+        if (curPageUrl != null) list.add(curPageUrl);
+        list.addAll(downloadQueue);
+        return list.toArray(new String[0]);
+    }
+
+    void restoreState(String[] array) {
+        downloadQueue.clear();
+        for (String str : array)
+            downloadQueue.offer(str);
+        threadRunning = true;
+        if (!downloadThread.isAlive()) downloadThread.start();
     }
 }

@@ -10,4 +10,7 @@
     <string name="load_clipboard">加载剪贴板</string>
     <string name="reset_download_manager">重置下载管理器</string>
     <string name="download">下载</string>
+    <string name="needLogin">未设置Cookie，需要登录</string>
+    <string name="add_succeed">添加成功</string>
+    <string name="add_fail">添加失败</string>
 </resources>

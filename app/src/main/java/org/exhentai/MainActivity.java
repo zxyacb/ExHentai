@@ -1,13 +1,10 @@
 package org.exhentai;
 
-import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.os.PersistableBundle;
 import android.support.annotation.Nullable;
 import android.support.design.widget.FloatingActionButton;
 import android.support.v7.app.AppCompatActivity;
@@ -17,12 +14,15 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.webkit.*;
+import android.webkit.CookieManager;
+import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
-import java.util.*;
-import java.util.regex.Pattern;
+import java.util.HashMap;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -31,9 +31,6 @@ public class MainActivity extends AppCompatActivity {
     private final String loginUrl = "https://forums.e-hentai.org/index.php?act=Login&CODE=00";
     private final String homepageUrl = "https://exhentai.org";
     private final String fullColorUrl = "https://exhentai.org/?f_doujinshi=1&f_manga=1&f_artistcg=1&f_gamecg=1&f_western=0&f_non-h=0&f_imageset=1&f_cosplay=1&f_asianporn=1&f_misc=0&f_search=full+color&f_apply=Apply+Filter";
-
-    private final Pattern galleryRegex = Pattern.compile("https://exhentai\\.org/g/\\w+/\\w+");
-    private final Pattern galleryPageRegex = Pattern.compile("https://exhentai\\.org/s/\\w+/\\w+");
 
     private final String exhentaiCookie = "ipb_member_id=1601063;ipb_pass_hash=9f4567fb2741f37900a0054d4706a7d2;yay=louder;igneous=ace6704ed;s=7f5a98a89;sk=6a67o8lsurapoheqnzvqwo5g29xu";
 
@@ -67,7 +64,7 @@ public class MainActivity extends AppCompatActivity {
             initUrl = homepageUrl;
         } else {
             initUrl = loginUrl;
-            Toast.makeText(this, "未设置Cookie，需要登录", Toast.LENGTH_LONG);
+            Toast.makeText(this, R.string.needLogin, Toast.LENGTH_SHORT).show();
         }
 
         createDownloadManager();
@@ -115,6 +112,13 @@ public class MainActivity extends AppCompatActivity {
         initUrl = fullColorUrl;
         webv.loadUrl(initUrl);
 
+        //restore state if being killed
+        if (savedInstanceState != null) {
+            String[] gallery = savedInstanceState.getStringArray("gallery");
+            if (gallery != null)
+                downloadManager.restoreState(gallery);
+        }
+
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -158,6 +162,14 @@ public class MainActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        Log.i("onSaveInstanceState", "onSaveInstanceState");
+        String[] gallery = downloadManager.saveState();
+        outState.putStringArray("gallery", gallery);
+    }
+
     Boolean checkCookie() {
         if (cookieManager.getCookie("exhentai.org") != null) {
             String exhentai = cookieManager.getCookie("e-hentai.org");
@@ -191,8 +203,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void onResetClick(MenuItem menuItem) {
+        String[] state=downloadManager.saveState();
         downloadManager.reset();
         createDownloadManager();
+        downloadManager.restoreState(state);
     }
 
     void createDownloadManager() {
@@ -204,17 +218,4 @@ public class MainActivity extends AppCompatActivity {
         downloadManager = new HentaiDownloadManager(this, getApplicationContext().getExternalFilesDir("").toString(), cookies);
     }
 
-    public enum UrlType {
-        OTHER,
-        EXHENTAI_GALLERY,
-        EXHENTAI_GALLERY_PAGE
-    }
-
-    UrlType getUrlType(String url) {
-        if (galleryRegex.matcher(url).find())
-            return UrlType.EXHENTAI_GALLERY;
-        else if (galleryPageRegex.matcher(url).find())
-            return UrlType.EXHENTAI_GALLERY_PAGE;
-        else return UrlType.OTHER;
-    }
 }
