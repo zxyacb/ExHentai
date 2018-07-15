@@ -208,6 +208,9 @@ public class MainActivity extends AppCompatActivity {
         createDownloadManager();
         downloadManager.restoreState(state);
     }
+    public void onSkipDownloading(MenuItem item){
+        downloadManager.skip();
+    }
 
     void createDownloadManager() {
         HashMap cookies = new HashMap<String, String>();

@@ -13,4 +13,5 @@
     <string name="needLogin">未设置Cookie，需要登录</string>
     <string name="add_succeed">添加成功</string>
     <string name="add_fail">添加失败</string>
+    <string name="skip_downloading">跳过正在下载</string>
 </resources>

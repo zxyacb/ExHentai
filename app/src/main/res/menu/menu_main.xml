@@ -19,4 +19,6 @@
     <item
         android:onClick="onResetClick"
         android:title="@string/reset_download_manager" />
+    <item android:title="@string/skip_downloading"
+        android:onClick="onSkipDownloading"/>
 </menu>
