@@ -1,11 +1,17 @@
 package org.exhentai;
 
-import android.app.Activity;
+import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.Service;
+import android.content.Intent;
+import android.database.Cursor;
+import android.database.SQLException;
+import android.database.sqlite.SQLiteDatabase;
 import android.os.Build;
-import android.os.SystemClock;
+import android.os.IBinder;
+import android.support.annotation.Nullable;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -19,6 +25,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -30,33 +37,27 @@ import okhttp3.Response;
 import okio.BufferedSink;
 import okio.Okio;
 
-import static android.content.Context.NOTIFICATION_SERVICE;
+public class HentaiDownloadService extends Service {
+    @Override
+    public IBinder onBind(Intent intent) {
+        Log.i("Service", "onBind");
+        return null;
+    }
 
-public class HentaiDownloadManager {
-    private final ArrayBlockingQueue<String> downloadQueue = new ArrayBlockingQueue<String>(1000);
-    private final HashSet<String> finishedGalleries = new HashSet<>();
-    private final Pattern galleryRegex = Pattern.compile("https://exhentai\\.org/g/\\w+/\\w+");
-    private final Pattern galleryPageRegex = Pattern.compile("https://exhentai\\.org/s/\\w+/\\w+");
-    private final String baseDirectory;
-    private final String userAgent = "Mozilla/5.0 (Linux; Android 8.0.0; MI 6 Build/OPR1.170623.027; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/62.0.3202.84 Mobile Safari/537.36";
+    @Override
+    public void onCreate() {
+        Log.i("Service", "onCreate");
+        super.onCreate();
 
-    private final Activity activity;
-    private Connection connection;
-    private final OkHttpClient client;
-    private final NotificationManager notificationManager;
-    private final Notification.Builder builder;
-    private final Thread downloadThread;
-    private boolean threadRunning = true;
-    private boolean skip = false;
-    private String curPageUrl;
-
-
-    HentaiDownloadManager(Activity act, String dir, HashMap<String, String> cookie) {
-        activity = act;
-        baseDirectory = dir;
-        connection = Jsoup.connect("http://example.com").cookies(cookie).userAgent(userAgent).timeout(5000);
+        baseDirectory = this.getApplicationContext().getExternalFilesDir("").toString();
+        HashMap cookies = new HashMap<String, String>();
+        for (String str : exhentaiCookie.split(";")) {
+            String[] s = str.split("=");
+            cookies.put(s[0], s[1]);
+        }
+        connection = Jsoup.connect("http://example.com").cookies(cookies).userAgent(userAgent).timeout(5000);
         client = new OkHttpClient.Builder().writeTimeout(15, TimeUnit.SECONDS).build();
-        notificationManager = (NotificationManager) MainActivity.globalActivity.getSystemService(NOTIFICATION_SERVICE);
+        notificationManager = (NotificationManager) this.getSystemService(NOTIFICATION_SERVICE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             notificationManager.createNotificationChannel(new NotificationChannel("exhentai", "exhentai", NotificationManager.IMPORTANCE_DEFAULT));
             builder = new Notification.Builder(MainActivity.globalActivity, "exhentai");
@@ -65,27 +66,79 @@ public class HentaiDownloadManager {
         }
         builder.setTicker("开始下载")
                 .setSmallIcon(R.mipmap.ic_launcher)
-                .setWhen(SystemClock.currentThreadTimeMillis())
                 .setDefaults(Notification.DEFAULT_LIGHTS)//消息提示模式
                 .setProgress(100, 0, false);
+
+        sqlite = new SQLStorage();
+        sqlite.checkDb();
+
+        for (String url : sqlite.queryUnfinishedGalleries()) {
+            downloadQueue.offer(url);
+        }
 
         downloadThread = new DownloadThread();
         downloadThread.start();
     }
 
-    void add(String url) {
-        if (offer(url))
-            Toast.makeText(MainActivity.globalActivity, R.string.add_succeed, Toast.LENGTH_SHORT).show();
-        else
-            Toast.makeText(MainActivity.globalActivity, R.string.add_fail, Toast.LENGTH_SHORT).show();
+    @Override
+    public void onDestroy() {
+        Log.i("Service", "onDestroy");
+        //save not complete galleries
+        sqlite.close();
+        if (notificationManager != null) {
+            notificationManager.cancelAll();
+        }
+        super.onDestroy();
     }
 
-    private boolean offer(String url) {
-        if (url == null || downloadQueue.contains(url) || finishedGalleries.contains(url))
-            return false;
-        if (galleryRegex.matcher(url).find() || galleryPageRegex.matcher(url).find())
-            return downloadQueue.offer(url);
-        else return false;
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        String url = intent.getStringExtra("url");
+        addToQueue(url);
+
+        return super.onStartCommand(intent, flags, startId);
+    }
+
+
+    private final String exhentaiCookie = "ipb_member_id=1601063;ipb_pass_hash=9f4567fb2741f37900a0054d4706a7d2;yay=louder;igneous=ace6704ed;s=7f5a98a89;sk=6a67o8lsurapoheqnzvqwo5g29xu";
+
+    private final ArrayBlockingQueue<String> downloadQueue = new ArrayBlockingQueue<String>(1000);
+    private final HashSet<String> galleryIdSet = new HashSet<>();
+    private final Pattern galleryRegex = Pattern.compile("https://exhentai\\.org/g/(\\w+)/\\w+");
+    private final Pattern galleryPageRegex = Pattern.compile("https://exhentai\\.org/s/\\w+/(\\d+)-(\\d+)");
+    private final String userAgent = "Mozilla/5.0 (Linux; Android 8.0.0; MI 6 Build/OPR1.170623.027; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/62.0.3202.84 Mobile Safari/537.36";
+
+    private String baseDirectory;
+    private Connection connection;
+    private OkHttpClient client;
+    private NotificationManager notificationManager;
+    private Notification.Builder builder;
+    private SQLStorage sqlite;
+    private Thread downloadThread;
+    private boolean threadRunning = true;
+    private boolean skip = false;
+    private String curPageUrl;
+
+    private void addToQueue(@Nullable String url) {
+        if (url == null) return;
+        String gallery = getGalleryId(url);
+        if (gallery == null) {
+            Toast.makeText(getApplicationContext(), "不是有效的图集地址", Toast.LENGTH_SHORT).show();
+        } else if (sqlite.insert(gallery, url)) {
+            downloadQueue.offer(url);
+            Toast.makeText(getApplicationContext(), "添加成功", Toast.LENGTH_SHORT).show();
+        } else Toast.makeText(getApplicationContext(), "图集已存在", Toast.LENGTH_SHORT).show();
+    }
+
+    private String getGalleryId(@Nullable String url) {
+        if (url == null) return null;
+        Matcher m1 = galleryRegex.matcher(url);
+        Matcher m2 = galleryPageRegex.matcher(url);
+        if (m1.find()) {
+            return m1.group(1);
+        } else if (m2.find()) {
+            return m2.group(1);
+        } else return null;
     }
 
     private class DownloadThread extends Thread {
@@ -97,7 +150,6 @@ public class HentaiDownloadManager {
                     if (curPageUrl.equals("")) {
                         continue;
                     }
-                    finishedGalleries.add(curPageUrl);
                     String title = "";
                     if (galleryRegex.matcher(curPageUrl).find()) {
                         while (true) {
@@ -111,7 +163,7 @@ public class HentaiDownloadManager {
                         }
                     }
                     skip = false;
-                    Matcher matcher = Pattern.compile("/(\\d+)-\\d+").matcher(curPageUrl);
+                    Matcher matcher = galleryPageRegex.matcher(curPageUrl);
                     final String galleryId;
                     if (matcher.find()) {
                         galleryId = matcher.group(1);
@@ -180,15 +232,17 @@ public class HentaiDownloadManager {
                             //判断是否最后一页
                             if (finalPageId != null && Integer.parseInt(pageId) >= Integer.parseInt(finalPageId)) {
                                 Log.i("DownloadThread", "最后一页");
-                                builder.setContentTitle(title).setContentText(pageId + " / " + finalPageId+" 已完成")
+                                curPageUrl = null;
+                                builder.setContentTitle(title).setContentText(pageId + " / " + finalPageId + "   " + galleryId + " 已完成，队列剩余" + downloadQueue.size())
                                         .setProgress(Integer.parseInt(pageId), Integer.parseInt(finalPageId), false);
                                 notificationManager.notify(Integer.parseInt(galleryId), builder.build());
+                                sqlite.updateProgress(galleryId, finalPageId, true);
                                 break;
                             }
 
                             if (finalPageId != null) {
                                 try {
-                                    builder.setContentTitle(title).setContentText(pageId + " / " + finalPageId)
+                                    builder.setContentTitle(title).setContentText(pageId + " / " + finalPageId + "   " + galleryId + " 队列剩余" + downloadQueue.size())
                                             .setProgress(Integer.parseInt(finalPageId), Integer.parseInt(pageId), false);
                                     notificationManager.notify(Integer.parseInt(galleryId), builder.build());
                                 } catch (NumberFormatException ignored) {
@@ -197,66 +251,98 @@ public class HentaiDownloadManager {
 
                             //下一页
                             curPageUrl = next.attr("href");
+                            sqlite.updateUrl(getGalleryId(curPageUrl), curPageUrl);
                             Log.i("DownloadThread", "下一页：" + curPageUrl);
                             Thread.sleep(500);
                         } catch (NullPointerException | IOException ignored) {
                         }
                     }
                 }
+                notificationManager.cancelAll();
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-            notificationManager.cancelAll();
         }
     }
 
-    boolean downloadImage(String galleryId, String pageId, String imgSrc) {
+    private boolean downloadImage(String galleryId, String pageId, String imgSrc) {
         File image = new File(baseDirectory + "/" + galleryId + "/" + pageId + ".jpg");
-        if (!image.exists()) {
-            Log.i("DownloadThread", "download start: " + pageId);
-            for (int i = 0; i < 2; i++) {
-                Request request = new Request.Builder().url(imgSrc).build();
-                try (Response response = client.newCall(request).execute();
-                     BufferedSink sink = Okio.buffer(Okio.sink(image));) {
-                    if (!response.isSuccessful())
-                        throw new IOException("Unexpected code " + response);
-                    sink.writeAll(response.body().source());
-                    Log.i("DownloadThread", "download succeed: " + pageId);
-                    return true;
-                } catch (IOException e) {
-                    if (image.exists())
-                        image.delete();
-                }
+
+        Log.i("DownloadThread", "download start: " + pageId);
+        for (int i = 0; i < 2; i++) {
+            Request request = new Request.Builder().url(imgSrc).build();
+            try (Response response = client.newCall(request).execute();
+                 BufferedSink sink = Okio.buffer(Okio.sink(image));) {
+                if (!response.isSuccessful())
+                    throw new IOException("Unexpected code " + response);
+                sink.writeAll(response.body().source());
+                Log.i("DownloadThread", "download succeed: " + pageId);
+                return true;
+            } catch (IOException ignored) {
             }
-        } else {
-            Log.i("DownloadThread", "skip exist image: " + pageId);
-            return true;
         }
         return false;
     }
 
-    void skip() {
-        skip = true;
-    }
+    /**
+     * 将下载历史写入sqlite
+     */
+    public class SQLStorage {
+        private final String dbName = "hentai";
 
-    void reset() {
-        threadRunning = false;
-        downloadQueue.offer("");
-    }
+        private SQLiteDatabase db;
 
-    String[] saveState() {
-        ArrayList<String> list = new ArrayList<>();
-        if (curPageUrl != null) list.add(curPageUrl);
-        list.addAll(downloadQueue);
-        return list.toArray(new String[0]);
-    }
+        protected SQLStorage() {
+            db = SQLiteDatabase.openOrCreateDatabase(String.format("%s/.%s.db", baseDirectory, dbName), null);
+        }
 
-    void restoreState(String[] array) {
-        Log.i("downloadManager", "restore state");
-        downloadQueue.clear();
-        for (String str : array)
-            downloadQueue.offer(str);
-        threadRunning = true;
-        if (!downloadThread.isAlive()) downloadThread.start();
+        protected List<String> queryUnfinishedGalleries() {
+            Cursor cursor = db.rawQuery("select url from history where finished=0", null);
+            List<String> list = new ArrayList<>();
+            while (cursor.moveToNext()) {
+                list.add(cursor.getString(0));
+            }
+            return list;
+        }
+
+        @SuppressLint("DefaultLocale")
+        protected boolean insert(String gallery, String url) {
+            try {
+                db.execSQL(String.format("insert into history values(%s,0,'%s',0)", gallery, url));
+                return true;
+            } catch (SQLException ignored) {
+                return false;
+            }
+        }
+
+        @SuppressLint("DefaultLocale")
+        protected void updateProgress(@Nullable String gallery, @Nullable String pages, boolean finished) {
+            if (gallery == null || pages == null) return;
+            db.execSQL(String.format("update history set pages=%s,finished='%s' where gallery=%s", pages, finished, gallery));
+        }
+
+        @SuppressLint("DefaultLocale")
+        protected void updateUrl(@Nullable String gallery, @Nullable String url) {
+            if (gallery == null || url == null) return;
+            db.execSQL(String.format("update history set url='%s' where gallery=%s", url, gallery));
+        }
+
+        /**
+         * check datebase and table(init if not exist)
+         */
+        protected void checkDb() {
+            Log.i("Service", "checkDB");
+            if (db.isOpen()) {
+                try {
+                    db.execSQL("select * from history limit 1");
+                } catch (SQLException e) {
+                    db.execSQL("create table if not exists history (gallery INTEGER PRIMARY KEY, pages INTEGER, url VARCHAR(128), finished BOOLEAN)");
+                }
+            }
+        }
+
+        protected void close() {
+            db.close();
+        }
     }
 }

@@ -2,6 +2,7 @@ package org.exhentai;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -34,7 +35,6 @@ public class MainActivity extends AppCompatActivity {
 
     private final String exhentaiCookie = "ipb_member_id=1601063;ipb_pass_hash=9f4567fb2741f37900a0054d4706a7d2;yay=louder;igneous=ace6704ed;s=7f5a98a89;sk=6a67o8lsurapoheqnzvqwo5g29xu";
 
-    private HentaiDownloadManager downloadManager;
     private WebView webv;
 
     public static MainActivity globalActivity;
@@ -44,7 +44,7 @@ public class MainActivity extends AppCompatActivity {
         public void handleMessage(Message msg) {
             // Get link-URL.
             String url = (String) msg.getData().get("url");
-            downloadManager.add(url);
+            addToDownload(url);
         }
     };
 
@@ -67,7 +67,8 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, R.string.needLogin, Toast.LENGTH_SHORT).show();
         }
 
-        createDownloadManager();
+        addToDownload(null);
+
         final ProgressBar progressBar = findViewById(R.id.progressBar);
         webv.setWebChromeClient(new WebChromeClient() {
 
@@ -89,7 +90,7 @@ public class MainActivity extends AppCompatActivity {
                 int type = result.getType();
                 switch (type) {
                     case WebView.HitTestResult.SRC_ANCHOR_TYPE:
-                        downloadManager.add(result.getExtra());
+                        addToDownload(result.getExtra());
                         break;
                     case WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE:
                         Message msg = mHandler.obtainMessage();
@@ -112,18 +113,11 @@ public class MainActivity extends AppCompatActivity {
         initUrl = fullColorUrl;
         webv.loadUrl(initUrl);
 
-        //restore state if being killed
-        if (savedInstanceState != null) {
-            String[] gallery = savedInstanceState.getStringArray("gallery");
-            if (gallery != null)
-                downloadManager.restoreState(gallery);
-        }
-
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                downloadManager.add(webv.getUrl());
+                addToDownload(webv.getUrl());
             }
         });
     }
@@ -165,9 +159,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
-        Log.i("onSaveInstanceState", "onSaveInstanceState");
-        String[] gallery = downloadManager.saveState();
-        outState.putStringArray("gallery", gallery);
     }
 
     Boolean checkCookie() {
@@ -203,13 +194,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void onResetClick(MenuItem menuItem) {
-        String[] state=downloadManager.saveState();
-        downloadManager.reset();
-        createDownloadManager();
-        downloadManager.restoreState(state);
+
     }
-    public void onSkipDownloading(MenuItem item){
-        downloadManager.skip();
+
+    public void onSkipDownloading(MenuItem item) {
+
+    }
+
+    void addToDownload(@Nullable String url) {
+        Intent intent = new Intent(this, HentaiDownloadService.class);
+        if (url != null) intent.putExtra("url", url);
+        startService(intent);
     }
 
     void createDownloadManager() {
@@ -218,7 +213,5 @@ public class MainActivity extends AppCompatActivity {
             String[] s = str.split("=");
             cookies.put(s[0], s[1]);
         }
-        downloadManager = new HentaiDownloadManager(this, getApplicationContext().getExternalFilesDir("").toString(), cookies);
     }
-
 }
