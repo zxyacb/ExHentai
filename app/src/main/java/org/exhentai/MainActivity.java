@@ -24,6 +24,8 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import java.util.HashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -34,6 +36,8 @@ public class MainActivity extends AppCompatActivity {
     private final String fullColorUrl = "https://exhentai.org/?f_doujinshi=1&f_manga=1&f_artistcg=1&f_gamecg=1&f_western=0&f_non-h=0&f_imageset=1&f_cosplay=1&f_asianporn=1&f_misc=0&f_search=full+color&f_apply=Apply+Filter";
 
     private final String exhentaiCookie = "ipb_member_id=1601063;ipb_pass_hash=9f4567fb2741f37900a0054d4706a7d2;yay=louder;igneous=ace6704ed;s=7f5a98a89;sk=6a67o8lsurapoheqnzvqwo5g29xu";
+    private final Pattern galleryRegex = Pattern.compile("https://exhentai\\.org/g/(\\w+)/\\w+");
+    private final Pattern galleryPageRegex = Pattern.compile("https://exhentai\\.org/s/\\w+/(\\d+)-(\\d+)");
 
     private WebView webv;
 
@@ -71,7 +75,6 @@ public class MainActivity extends AppCompatActivity {
 
         final ProgressBar progressBar = findViewById(R.id.progressBar);
         webv.setWebChromeClient(new WebChromeClient() {
-
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
                 if (newProgress == 100) {
@@ -100,7 +103,13 @@ public class MainActivity extends AppCompatActivity {
                 return false;
             }
         });
-        webv.setWebViewClient(new WebViewClient());
+        webv.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                setTitle(url);
+            }
+        });
         WebSettings settings = webv.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setSupportZoom(true);
@@ -194,7 +203,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void onResetClick(MenuItem menuItem) {
-
+        Intent intent = new Intent(this, HentaiDownloadService.class);
+        stopService(intent);
+        startService(intent);
     }
 
     public void onSkipDownloading(MenuItem item) {
@@ -205,6 +216,21 @@ public class MainActivity extends AppCompatActivity {
         Intent intent = new Intent(this, HentaiDownloadService.class);
         if (url != null) intent.putExtra("url", url);
         startService(intent);
+    }
+
+    private Toolbar title;
+
+    void setTitle(String url) {
+        if (title == null) title = findViewById(R.id.toolbar);
+        Matcher m1 = galleryRegex.matcher(url);
+        Matcher m2 = galleryPageRegex.matcher(url);
+        if (m1.find()) {
+            title.setTitle("ExHentai - " + m1.group(1));
+        } else if (m2.find()) {
+            title.setTitle("ExHentai - " + m2.group(1) + " - " + m2.group(2));
+        } else {
+            title.setTitle("ExHentai");
+        }
     }
 
     void createDownloadManager() {
