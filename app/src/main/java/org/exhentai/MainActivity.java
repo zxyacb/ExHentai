@@ -27,6 +27,8 @@ import java.util.HashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import kotlin.text.Regex;
+
 
 public class MainActivity extends AppCompatActivity {
     private final CookieManager cookieManager = CookieManager.getInstance();
@@ -35,13 +37,14 @@ public class MainActivity extends AppCompatActivity {
     private final String homepageUrl = "https://exhentai.org";
     private final String fullColorUrl = "https://exhentai.org/?f_doujinshi=1&f_manga=1&f_artistcg=1&f_gamecg=1&f_western=0&f_non-h=0&f_imageset=1&f_cosplay=1&f_asianporn=1&f_misc=0&f_search=full+color&f_apply=Apply+Filter";
 
-    private final String exhentaiCookie = "ipb_member_id=1601063;ipb_pass_hash=9f4567fb2741f37900a0054d4706a7d2;yay=louder;igneous=ace6704ed;s=7f5a98a89;sk=6a67o8lsurapoheqnzvqwo5g29xu";
     private final Pattern galleryRegex = Pattern.compile("https://exhentai\\.org/g/(\\w+)/\\w+");
     private final Pattern galleryPageRegex = Pattern.compile("https://exhentai\\.org/s/\\w+/(\\d+)-(\\d+)");
 
     private WebView webv;
 
     public static MainActivity globalActivity;
+
+    public static String exhentaiCookies = "";
 
     private Handler mHandler = new Handler() {
         @Override
@@ -66,12 +69,14 @@ public class MainActivity extends AppCompatActivity {
         String initUrl;
         if (checkCookie()) {
             initUrl = homepageUrl;
+            // start download service
+            addToDownload(null);
         } else {
             initUrl = loginUrl;
             Toast.makeText(this, R.string.needLogin, Toast.LENGTH_SHORT).show();
         }
 
-        addToDownload(null);
+
 
         final ProgressBar progressBar = findViewById(R.id.progressBar);
         webv.setWebChromeClient(new WebChromeClient() {
@@ -171,14 +176,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     Boolean checkCookie() {
-        if (cookieManager.getCookie("exhentai.org") != null) {
-            String exhentai = cookieManager.getCookie("e-hentai.org");
-            return true;
-        } else {
-            for (String cookie : exhentaiCookie.split(";")) {
-                cookieManager.setCookie("exhentai.org", cookie);
+        String exhentai = cookieManager.getCookie("exhentai.org");
+        if (exhentai != null) {
+            String[] cookies = exhentai.split(";");
+            if(Pattern.compile("ipb_member_id=\\d{2,}").matcher(exhentai).find()){
+                exhentaiCookies = exhentai;
+                return true;
             }
-            return true;
+            else{
+                return false;
+            }
+        } else {
+            return false;
         }
     }
 
@@ -230,14 +239,6 @@ public class MainActivity extends AppCompatActivity {
             title.setTitle("ExHentai - " + m2.group(1) + " - " + m2.group(2));
         } else {
             title.setTitle("ExHentai");
-        }
-    }
-
-    void createDownloadManager() {
-        HashMap cookies = new HashMap<String, String>();
-        for (String str : exhentaiCookie.split(";")) {
-            String[] s = str.split("=");
-            cookies.put(s[0], s[1]);
         }
     }
 }

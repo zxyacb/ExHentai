@@ -51,7 +51,7 @@ public class HentaiDownloadService extends Service {
 
         baseDirectory = this.getApplicationContext().getExternalFilesDir("").toString();
         HashMap cookies = new HashMap<String, String>();
-        for (String str : exhentaiCookie.split(";")) {
+        for (String str : MainActivity.exhentaiCookies.split(";")) {
             String[] s = str.split("=");
             cookies.put(s[0], s[1]);
         }
@@ -98,9 +98,6 @@ public class HentaiDownloadService extends Service {
 
         return super.onStartCommand(intent, flags, startId);
     }
-
-
-    private final String exhentaiCookie = "ipb_member_id=1601063;ipb_pass_hash=9f4567fb2741f37900a0054d4706a7d2;yay=louder;igneous=ace6704ed;s=7f5a98a89;sk=6a67o8lsurapoheqnzvqwo5g29xu";
 
     private final ArrayBlockingQueue<String> downloadQueue = new ArrayBlockingQueue<String>(1000);
     private final HashSet<String> galleryIdSet = new HashSet<>();
@@ -214,6 +211,11 @@ public class HentaiDownloadService extends Service {
                             }
 
                             String imgSrc = img.attr("src");
+                            if(imgSrc.equals("https://exhentai.org/img/509.gif")){
+                                Log.i("DownloadThread", "Bandwidth Exceeded");
+                                Thread.sleep(30000);
+                                continue;
+                            }
                             if (!downloadImage(galleryId, pageId, imgSrc)) {
                                 Log.i("DownloadThread", "download error: " + pageId + " " + imgSrc);
                                 String onerror = img.attr("onerror");
