@@ -99,8 +99,7 @@ public class HentaiDownloadService extends Service {
         return super.onStartCommand(intent, flags, startId);
     }
 
-    private final ArrayBlockingQueue<String> downloadQueue = new ArrayBlockingQueue<String>(1000);
-    private final HashSet<String> galleryIdSet = new HashSet<>();
+    private final ArrayBlockingQueue<String> downloadQueue = new ArrayBlockingQueue<>(1000);
     private final Pattern galleryRegex = Pattern.compile("https://exhentai\\.org/g/(\\w+)/\\w+");
     private final Pattern galleryPageRegex = Pattern.compile("https://exhentai\\.org/s/\\w+/(\\d+)-(\\d+)");
     private final String userAgent = "Mozilla/5.0 (Linux; Android 8.0.0; MI 6 Build/OPR1.170623.027; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/62.0.3202.84 Mobile Safari/537.36";

@@ -3,6 +3,7 @@ package org.exhentai;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -23,7 +24,6 @@ import android.webkit.WebViewClient;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
-import java.util.HashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -65,15 +65,13 @@ public class MainActivity extends AppCompatActivity {
 
         String initUrl;
         if (checkCookie()) {
-            initUrl = homepageUrl;
+            initUrl = fullColorUrl;
             // start download service
             addToDownload(null);
         } else {
             initUrl = loginUrl;
             Toast.makeText(this, R.string.needLogin, Toast.LENGTH_SHORT).show();
         }
-
-
 
         final ProgressBar progressBar = findViewById(R.id.progressBar);
         webv.setWebChromeClient(new WebChromeClient() {
@@ -119,9 +117,10 @@ public class MainActivity extends AppCompatActivity {
         settings.setDisplayZoomControls(false);
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        }
 
-        initUrl = fullColorUrl;
         webv.loadUrl(initUrl);
 
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
@@ -180,12 +179,14 @@ public class MainActivity extends AppCompatActivity {
                 exhentaiCookies = exhentai;
                 return true;
             }
-            else{
-                return false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                cookieManager.removeAllCookies(null);
             }
-        } else {
-            return false;
+            else {
+                cookieManager.removeAllCookie();
+            }
         }
+        return false;
     }
 
     public void onRefreshClick(MenuItem menuItem) {
